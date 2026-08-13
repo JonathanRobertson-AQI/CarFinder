@@ -1,0 +1,14 @@
+{
+  "make": "Honda",
+  "model": "Pilot",
+  "year_min": 2009,
+  "year_max": 2015,
+  "price_max": 20000,
+  "price_min": null,
+  "location": "80301",
+  "radius_miles": 100,
+  "max_mileage": 150000,
+  "sources": ["facebook", "craigslist", "cars_com"],
+  "min_sample_size_for_valuation": 5,
+  "good_deal_percentile": 25.0
+}
