@@ -15,6 +15,7 @@ where possible) and this scraper should be expected to need maintenance.
 from __future__ import annotations
 
 import re
+import time
 from urllib.parse import quote_plus
 
 from carfinder.models import Listing
@@ -31,6 +32,31 @@ from carfinder.scrapers.base import BaseScraper, parse_price, parse_year
 # current price and the first non-badge text line as the title.
 _PRICE_LINE_RE = re.compile(r"^\$[\d,]+(?:\.\d{2})?$")
 _BADGE_WORDS = {"just listed", "new"}
+
+# Unlike the search-results cards, a listing's own detail page includes a
+# structured "About this vehicle" section (e.g. "Driven 135,000 miles") and
+# often a more precise figure in the seller's free-text description (e.g.
+# "Mileage: 133,690 miles"). Search results themselves never include
+# mileage at all, so it has to be fetched from each listing's detail page.
+# Some listings skip the structured section and just mention mileage in
+# free text (English or Spanish, e.g. "with 183,596 miles" / "132mil
+# millas"), so several fallback patterns are tried in order of reliability.
+_DRIVEN_MILEAGE_RE = re.compile(r"Driven\s+([\d,]+)\s*miles?", re.IGNORECASE)
+_DESCRIPTION_MILEAGE_RE = re.compile(r"Mileage[:\s]+([\d,]+)\s*miles?", re.IGNORECASE)
+# Requires a comma-grouped number or 4-6 plain digits directly followed by
+# the full word "miles" (not "mi"), to avoid false positives like the
+# sidebar's "Within 40 mi" search-radius text.
+_GENERIC_MILES_RE = re.compile(r"\b(\d{1,3}(?:,\d{3})+|\d{4,6})\s*miles\b", re.IGNORECASE)
+_SPANISH_MIL_MILLAS_RE = re.compile(r"(\d+)\s*mil\s*millas", re.IGNORECASE)
+_SPANISH_MILLAS_RE = re.compile(r"\b(\d{1,3}(?:,\d{3})+|\d{4,6})\s*millas\b", re.IGNORECASE)
+MILEAGE_PATTERNS = [
+    (_DRIVEN_MILEAGE_RE, 1),
+    (_DESCRIPTION_MILEAGE_RE, 1),
+    (_GENERIC_MILES_RE, 1),
+    (_SPANISH_MIL_MILLAS_RE, 1000),  # "132mil millas" == 132 thousand miles
+    (_SPANISH_MILLAS_RE, 1),
+]
+DETAIL_PAGE_DELAY_SECONDS = 1.5
 
 
 class FacebookMarketplaceScraper(BaseScraper):
@@ -95,4 +121,27 @@ class FacebookMarketplaceScraper(BaseScraper):
                 )
             )
 
+        # Mileage isn't shown on the search-results cards at all, so visit
+        # each listing's own detail page for it. This adds real time (one
+        # extra page load per listing) but is the only way to get it.
+        for listing in listings:
+            listing.mileage = self._fetch_mileage(page, listing.url)
+
         return listings
+
+    def _fetch_mileage(self, page, url: str) -> int | None:
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=20000)
+            time.sleep(DETAIL_PAGE_DELAY_SECONDS)
+            body_text = page.locator("body").inner_text()
+        except Exception:
+            return None
+
+        for pattern, multiplier in MILEAGE_PATTERNS:
+            match = pattern.search(body_text)
+            if match:
+                try:
+                    return int(float(match.group(1).replace(",", "")) * multiplier)
+                except ValueError:
+                    continue
+        return None
