@@ -32,10 +32,12 @@ price, location, radius, max mileage) are fully configurable via
   - Running this in an automated/repeated fashion may violate these sites'
     Terms of Service. **This tool is intended for personal, on-demand,
     rate-limited use only** — run it manually, not on a tight schedule.
-- **Facebook Marketplace requires a logged-in session.** Use the "Log into
-  Facebook" button in the web UI (or `python facebook_login.py`), which
-  opens a real browser window for you to log in yourself — the tool never
-  sees your password, and only stores the resulting session cookies
+- **Facebook Marketplace may require a logged-in session.** In testing,
+  logged-out public searches worked, but Facebook can show a login wall for
+  some searches/locations/accounts. If you see zero Facebook results, use the
+  "Log into Facebook" button in the web UI (or `python facebook_login.py`),
+  which opens a real browser window for you to log in yourself — the tool
+  never sees your password, and only stores the resulting session cookies
   locally in `facebook_session.json`.
 - **No free "blue book" valuation exists.** Value estimates here are derived
   from comparable listings found in the same scrape, not an authoritative
@@ -123,17 +125,16 @@ pytest
 
 Tests cover the database layer, valuation logic, VIN decoding (mocked HTTP),
 and report rendering — not live scraping, since that depends on the current
-state of third-party sites. The Craigslist and Cars.com scrapers have been
-manually verified against the live sites as of this writing; Facebook
-Marketplace's scraper has not been (it requires a logged-in session) and is
-the most likely to need selector fixes.
+state of third-party sites. All three scrapers (Craigslist, Cars.com, and
+Facebook Marketplace) have been manually verified against the live sites as
+of this writing, including a logged-out Facebook Marketplace session.
 
 ## Roadmap (not yet implemented)
 
 - AutoTrader / CarGurus scrapers (same aggregator-site family as Cars.com).
-- Verifying the Facebook Marketplace scraper's selectors against a real,
-  logged-in session (untested; login flow is implemented but the listing
-  card parsing may need adjustment).
+- Verifying the Facebook Marketplace scraper against a real, logged-in
+  session (the login flow is implemented and the scraper works logged-out,
+  but a logged-in run hasn't been exercised end-to-end).
 - Notifications (email/SMS/Discord) for new deals.
 - Scheduled execution (currently designed for manual runs only).
 - De-duplicating near-identical repost listings (e.g. dealers who repost
