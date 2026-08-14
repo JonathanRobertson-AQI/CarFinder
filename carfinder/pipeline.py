@@ -21,6 +21,32 @@ logger = logging.getLogger("carfinder.pipeline")
 ProgressCallback = Callable[[str], None]
 
 
+def _within_filters(listing: Listing, config: SearchConfig) -> bool:
+    """Check a scraped listing against year/price/mileage filters.
+
+    Not every source's search URL reliably honors these filters server-side
+    (notably Facebook Marketplace, which has no year/mileage query params at
+    all), so this is applied uniformly after scraping as a safety net --
+    without it, a search for e.g. 2011-2015 could silently include much
+    older/newer or out-of-budget listings just because the site returned
+    them anyway.
+    """
+    if listing.year is not None:
+        if config.year_min and listing.year < config.year_min:
+            return False
+        if config.year_max and listing.year > config.year_max:
+            return False
+    if listing.price is not None:
+        if config.price_min and listing.price < config.price_min:
+            return False
+        if config.price_max and listing.price > config.price_max:
+            return False
+    if listing.mileage is not None and config.max_mileage:
+        if listing.mileage > config.max_mileage:
+            return False
+    return True
+
+
 def run_pipeline(
     config: SearchConfig,
     sources: Optional[list[str]] = None,
@@ -62,6 +88,14 @@ def run_pipeline(
         scraper = scraper_cls(config, headless=headless, **kwargs)
         listings: list[Listing] = scraper.run()
         notify(f"{source}: found {len(listings)} listing(s)")
+
+        before_filter = len(listings)
+        listings = [l for l in listings if _within_filters(l, config)]
+        if len(listings) != before_filter:
+            notify(
+                f"{source}: filtered out {before_filter - len(listings)} listing(s) "
+                f"outside the year/price/mileage filters"
+            )
 
         if decode_vins:
             for listing in listings:
