@@ -32,11 +32,11 @@ price, location, radius, max mileage) are fully configurable via
   - Running this in an automated/repeated fashion may violate these sites'
     Terms of Service. **This tool is intended for personal, on-demand,
     rate-limited use only** — run it manually, not on a tight schedule.
-- **Facebook Marketplace requires a logged-in session.** This scraper does
-  not handle login. Generate a `storage_state.json` once via Playwright's
-  `browser_context.storage_state(path=...)` after manually logging in in a
-  non-headless browser, then load it in `FacebookMarketplaceScraper` (not
-  yet wired up — see TODO below) to reuse the session.
+- **Facebook Marketplace requires a logged-in session.** Use the "Log into
+  Facebook" button in the web UI (or `python facebook_login.py`), which
+  opens a real browser window for you to log in yourself — the tool never
+  sees your password, and only stores the resulting session cookies
+  locally in `facebook_session.json`.
 - **No free "blue book" valuation exists.** Value estimates here are derived
   from comparable listings found in the same scrape, not an authoritative
   source like KBB.
@@ -46,14 +46,29 @@ price, location, radius, max mileage) are fully configurable via
 - **Notifications are out of scope for phase 1.** The tool only produces a
   report file; no email/SMS/push integration yet.
 
-## Setup
+## Getting started (web UI — recommended, no command line needed after setup)
 
-```bash
+```powershell
 pip install -r requirements.txt
 playwright install chromium
+python app.py
 ```
 
-## Usage
+This opens `http://127.0.0.1:5000` in your browser automatically. From there:
+
+1. **Search Settings** — set make/model/year range/price/location/radius/
+   mileage and which sources to search, then click **Save Settings**.
+2. **Facebook Login** — click **Log into Facebook** once. A real browser
+   window opens; log in there (including any 2FA). The app detects when
+   you're logged in, saves the session, and closes the window automatically.
+3. **Run Search Now** — click to scrape all selected sources. Progress is
+   shown live; when done, the results table refreshes with new listings and
+   good deals highlighted.
+
+Re-run the search any time by clicking the button again — it's meant for
+manual, on-demand use.
+
+## Command-line usage (alternative / advanced)
 
 ```bash
 # Uses config.json in the repo root
@@ -67,6 +82,9 @@ python main.py --decode-vins
 
 # Watch the browser while it scrapes (useful for debugging selectors)
 python main.py --no-headless
+
+# Log into Facebook from the command line instead of the web UI
+python facebook_login.py
 ```
 
 Edit `config.json` to change make/model/year range/price/location/radius/
@@ -83,12 +101,17 @@ carfinder/
   vin.py         # NHTSA vPIC VIN decoding
   valuation.py   # Comparable-listing valuation / good-deal scoring
   report.py      # Markdown report generation
+  pipeline.py    # Shared scrape -> persist -> valuate -> report flow
+  facebook_auth.py  # Manual Facebook login helper (used by the web UI)
   scrapers/
     base.py      # Shared Playwright scraping scaffolding
     facebook.py
     craigslist.py
-    cars_com.py
-main.py          # CLI entrypoint wiring it all together
+    cars_com.py  # Uses Cars.com's embedded structured vehicle-data JSON
+app.py           # Web UI (Flask) -- recommended way to run this tool
+main.py          # CLI entrypoint (same pipeline, no browser UI)
+facebook_login.py  # Standalone CLI alternative to the web UI's login button
+templates/       # HTML template for the web UI
 tests/           # Unit tests for the non-network-dependent logic
 ```
 
@@ -100,11 +123,19 @@ pytest
 
 Tests cover the database layer, valuation logic, VIN decoding (mocked HTTP),
 and report rendering — not live scraping, since that depends on the current
-state of third-party sites.
+state of third-party sites. The Craigslist and Cars.com scrapers have been
+manually verified against the live sites as of this writing; Facebook
+Marketplace's scraper has not been (it requires a logged-in session) and is
+the most likely to need selector fixes.
 
 ## Roadmap (not yet implemented)
 
 - AutoTrader / CarGurus scrapers (same aggregator-site family as Cars.com).
-- Facebook Marketplace login/session persistence wiring.
+- Verifying the Facebook Marketplace scraper's selectors against a real,
+  logged-in session (untested; login flow is implemented but the listing
+  card parsing may need adjustment).
 - Notifications (email/SMS/Discord) for new deals.
 - Scheduled execution (currently designed for manual runs only).
+- De-duplicating near-identical repost listings (e.g. dealers who repost
+  the same vehicle many times on Craigslist currently show up as separate
+  rows).

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CarFinder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
+  <style>
+    body { padding: 2rem; background: #f8f9fa; }
+    .badge-new { background-color: #0d6efd; }
+    .badge-deal { background-color: #198754; }
+    #job-log {
+      max-height: 200px; overflow-y: auto; font-family: monospace;
+      font-size: 0.85rem; background: #212529; color: #d4d4d4; padding: 0.75rem;
+      border-radius: 0.375rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="mb-1">🚗 CarFinder</h1>
+    <p class="text-muted">Search Facebook Marketplace, Craigslist, and Cars.com for {{ config.make }} {{ config.model }} listings.</p>
+
+    <div class="row g-4">
+      <!-- Search settings -->
+      <div class="col-lg-5">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Search Settings</h5>
+            <form method="post" action="{{ url_for('update_config') }}">
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">Make</label>
+                  <input class="form-control" name="make" value="{{ config.make }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Model</label>
+                  <input class="form-control" name="model" value="{{ config.model }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Year (min)</label>
+                  <input class="form-control" type="number" name="year_min" value="{{ config.year_min }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Year (max)</label>
+                  <input class="form-control" type="number" name="year_max" value="{{ config.year_max }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Price min ($)</label>
+                  <input class="form-control" type="number" name="price_min" value="{{ config.price_min or '' }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Price max ($)</label>
+                  <input class="form-control" type="number" name="price_max" value="{{ config.price_max or '' }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Location (zip/city)</label>
+                  <input class="form-control" name="location" value="{{ config.location }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Radius (miles)</label>
+                  <input class="form-control" type="number" name="radius_miles" value="{{ config.radius_miles }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Max mileage</label>
+                  <input class="form-control" type="number" name="max_mileage" value="{{ config.max_mileage or '' }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Good deal %ile</label>
+                  <input class="form-control" type="number" step="1" name="good_deal_percentile" value="{{ config.good_deal_percentile }}">
+                </div>
+                <div class="col-12">
+                  <label class="form-label d-block">Sources</label>
+                  {% for source in all_sources %}
+                  <div class="form-check form-check-inline">
+                    <input
+                      class="form-check-input" type="checkbox" name="sources"
+                      value="{{ source }}" id="src-{{ source }}"
+                      {% if source in config.sources %}checked{% endif %}
+                    >
+                    <label class="form-check-label" for="src-{{ source }}">{{ source }}</label>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              <button class="btn btn-primary mt-3" type="submit">Save Settings</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mt-3">
+          <div class="card-body">
+            <h5 class="card-title">Facebook Login</h5>
+            {% if facebook_logged_in %}
+              <p class="text-success mb-2">✅ Logged in — a saved session was found.</p>
+            {% else %}
+              <p class="text-warning mb-2">⚠️ Not logged in. Facebook Marketplace won't return results until you log in.</p>
+            {% endif %}
+            <button class="btn btn-outline-primary" id="login-fb-btn" type="button">
+              Log into Facebook
+            </button>
+            <div class="form-text">Opens a real browser window. Log in there (including any 2FA) — this app never sees your password.</div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mt-3">
+          <div class="card-body">
+            <h5 class="card-title">Run Search</h5>
+            <button class="btn btn-success" id="run-btn" type="button">Run Search Now</button>
+            <div class="form-text">Scrapes selected sources, saves results, and refreshes the table.</div>
+            <div id="job-status" class="mt-2 small"></div>
+            <pre id="job-log" class="d-none mt-2"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="col-lg-7">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Active Listings ({{ rows|length }})</h5>
+            {% if rows %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>Year</th>
+                    <th>Price</th>
+                    <th>Mileage</th>
+                    <th>Source</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in rows %}
+                  <tr>
+                    <td>{{ row.year or 'N/A' }}</td>
+                    <td>
+                      {% if row.valuation.is_good_deal %}<span class="badge badge-deal">Deal</span>{% endif %}
+                      {{ '${:,.0f}'.format(row.price) if row.price is not none else 'N/A' }}
+                    </td>
+                    <td>{{ '{:,} mi'.format(row.mileage) if row.mileage is not none else 'N/A' }}</td>
+                    <td>{{ row.source }}</td>
+                    <td>
+                      <div class="small text-muted">{{ row.valuation.note }}</div>
+                      <a href="{{ row.url }}" target="_blank" rel="noopener">{{ row.title }}</a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+              <p class="text-muted">No listings yet. Click "Run Search Now" to search for the first time.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function pollStatus(onDone) {
+      const logEl = document.getElementById('job-log');
+      const statusEl = document.getElementById('job-status');
+      logEl.classList.remove('d-none');
+      const interval = setInterval(() => {
+        fetch('/status').then(r => r.json()).then(data => {
+          logEl.textContent = data.log.join('\n');
+          logEl.scrollTop = logEl.scrollHeight;
+          if (!data.running) {
+            clearInterval(interval);
+            statusEl.textContent = data.error ? ('Error: ' + data.error) : 'Done.';
+            if (onDone) onDone();
+          } else {
+            statusEl.textContent = 'Running...';
+          }
+        });
+      }, 1500);
+    }
+
+    document.getElementById('login-fb-btn').addEventListener('click', () => {
+      fetch('/login-facebook', { method: 'POST' }).then(r => r.json()).then(data => {
+        if (!data.ok) { alert(data.error); return; }
+        document.getElementById('job-status').textContent = 'Opening browser window — please log in there...';
+        pollStatus(() => location.reload());
+      });
+    });
+
+    document.getElementById('run-btn').addEventListener('click', () => {
+      fetch('/run', { method: 'POST' }).then(r => r.json()).then(data => {
+        if (!data.ok) { alert(data.error); return; }
+        document.getElementById('job-status').textContent = 'Starting search...';
+        pollStatus(() => location.reload());
+      });
+    });
+  </script>
+</body>
+</html>

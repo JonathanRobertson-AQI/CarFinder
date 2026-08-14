@@ -6,3 +6,4 @@ venv/
 reports/
 .pytest_cache/
 storage_state.json
+facebook_session.json

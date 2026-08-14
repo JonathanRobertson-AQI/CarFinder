@@ -4,13 +4,23 @@ Represents the Cars.com/AutoTrader/CarGurus aggregator-site family. Cars.com
 is implemented directly; AutoTrader and CarGurus follow a very similar
 search-results structure and can reuse most of this logic (see README) --
 they're left as follow-up work since each requires its own selector tuning.
+
+Cars.com's search results page embeds a full JSON array of structured
+vehicle data (make/model/year/mileage/price/VIN/trim/dealer) in a
+`data-vehicle-array` HTML attribute on a `<search-provider>` element. This
+is far more robust than scraping visible card text, since it doesn't depend
+on the visual layout at all -- only on Cars.com continuing to embed this
+attribute, which is a smaller and more stable surface than CSS classes.
 """
 from __future__ import annotations
 
+import json
 from urllib.parse import quote_plus
 
 from carfinder.models import Listing
-from carfinder.scrapers.base import BaseScraper, parse_mileage, parse_price
+from carfinder.scrapers.base import BaseScraper
+
+DETAIL_URL_TEMPLATE = "https://www.cars.com/vehicledetail/{listing_id}/"
 
 
 class CarsComScraper(BaseScraper):
@@ -35,41 +45,63 @@ class CarsComScraper(BaseScraper):
         return url
 
     def extract_listings(self, page) -> list[Listing]:
+        raw = page.locator("search-provider").first.get_attribute(
+            "data-vehicle-array"
+        )
+        if not raw:
+            return []
+
+        try:
+            vehicles = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+
         listings: list[Listing] = []
-        cards = page.locator("div.vehicle-card").all()
+        for vehicle in vehicles:
+            listing_id = vehicle.get("listingId")
+            if not listing_id:
+                continue
 
-        for card in cards:
+            year = vehicle.get("year")
             try:
-                title = card.locator(".title").first.inner_text().strip()
-                link_el = card.locator("a.vehicle-card-link").first
-                href = link_el.get_attribute("href") or ""
-                url = (
-                    href if href.startswith("http") else f"https://www.cars.com{href}"
-                )
-                price_text = card.locator(".primary-price").first.inner_text()
-                mileage_text = card.locator(".mileage").first.inner_text()
-            except Exception:
-                continue
+                year = int(year) if year else None
+            except (TypeError, ValueError):
+                year = None
 
-            if not href:
-                continue
+            mileage = vehicle.get("mileage")
+            try:
+                mileage = int(mileage) if mileage else None
+            except (TypeError, ValueError):
+                mileage = None
 
-            year = None
-            parts = title.split(" ", 1)
-            if parts and parts[0].isdigit():
-                year = int(parts[0])
+            price = vehicle.get("price")
+            try:
+                price = float(price) if price else None
+            except (TypeError, ValueError):
+                price = None
+
+            seller = vehicle.get("seller") or {}
+            title_parts = [
+                str(year) if year else None,
+                vehicle.get("make"),
+                vehicle.get("model"),
+                vehicle.get("trim"),
+            ]
+            title = " ".join(p for p in title_parts if p)
 
             listings.append(
                 Listing(
                     source=self.source_name,
-                    url=url,
+                    url=DETAIL_URL_TEMPLATE.format(listing_id=listing_id),
                     title=title,
-                    price=parse_price(price_text),
+                    price=price,
                     year=year,
-                    make=self.config.make,
-                    model=self.config.model,
-                    mileage=parse_mileage(mileage_text),
-                    location=self.config.location,
+                    make=vehicle.get("make") or self.config.make,
+                    model=vehicle.get("model") or self.config.model,
+                    trim=vehicle.get("trim"),
+                    mileage=mileage,
+                    location=seller.get("zip") or self.config.location,
+                    vin=vehicle.get("vin"),
                 )
             )
 
