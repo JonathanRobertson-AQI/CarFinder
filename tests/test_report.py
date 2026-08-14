@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from carfinder.report import ReportRow, render_markdown_report
+from carfinder.report import ReportRow, dedupe_rows, render_markdown_report
 from carfinder.valuation import ValuationResult
 
 
@@ -45,3 +45,40 @@ def test_report_handles_no_listings():
     report = render_markdown_report([], "Honda", "Pilot")
     assert "Active listings: 0" in report
     assert "_None._" in report
+
+
+def test_dedupe_rows_collapses_same_listing_different_url():
+    rows = [
+        make_row(url="https://example.com/1", source="craigslist"),
+        make_row(url="https://facebook.com/marketplace/item/2", source="facebook"),
+    ]
+    deduped = dedupe_rows(rows)
+    assert len(deduped) == 1
+    assert deduped[0].url == "https://example.com/1"
+
+
+def test_dedupe_rows_is_case_and_whitespace_insensitive():
+    rows = [
+        make_row(url="https://example.com/1", title="  2012 Honda Pilot EX-L  "),
+        make_row(url="https://example.com/2", title="2012 HONDA PILOT ex-l"),
+    ]
+    assert len(dedupe_rows(rows)) == 1
+
+
+def test_dedupe_rows_keeps_distinct_listings():
+    rows = [
+        make_row(url="https://example.com/1", price=15000),
+        make_row(url="https://example.com/2", price=16000),
+    ]
+    assert len(dedupe_rows(rows)) == 2
+
+
+def test_dedupe_rows_merges_is_new_and_previous_price():
+    rows = [
+        make_row(url="https://example.com/1", is_new=False, previous_price=None),
+        make_row(url="https://example.com/2", is_new=True, previous_price=14000),
+    ]
+    deduped = dedupe_rows(rows)
+    assert len(deduped) == 1
+    assert deduped[0].is_new is True
+    assert deduped[0].previous_price == 14000

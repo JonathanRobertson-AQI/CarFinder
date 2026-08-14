@@ -24,7 +24,7 @@ from carfinder.db import ListingStore
 from carfinder.facebook_auth import DEFAULT_STORAGE_STATE_PATH, login_and_save_session
 from carfinder.pipeline import run_pipeline
 from carfinder.valuation import evaluate_listing
-from carfinder.report import ReportRow
+from carfinder.report import ReportRow, dedupe_rows
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger("carfinder.app")
@@ -89,7 +89,7 @@ def _get_latest_rows(config: SearchConfig) -> list[ReportRow]:
                 valuation=valuation,
             )
         )
-    return rows
+    return dedupe_rows(rows)
 
 
 @app.route("/")

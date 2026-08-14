@@ -28,6 +28,40 @@ class ReportRow:
     valuation: ValuationResult
 
 
+def dedupe_rows(rows: list[ReportRow]) -> list[ReportRow]:
+    """Collapse rows that represent the same real-world listing.
+
+    The same vehicle is sometimes crossposted (or reposted later) with a
+    different URL but an otherwise identical title/price/year/mileage/
+    location. Those are deduplicated here, keeping the first-seen row but
+    carrying over ``is_new``/``previous_price`` from any duplicates so
+    that information isn't lost just because the "wrong" copy is dropped.
+    """
+    def fingerprint(row: ReportRow) -> tuple:
+        return (
+            row.title.strip().lower(),
+            row.price,
+            row.year,
+            row.mileage,
+            (row.location or "").strip().lower(),
+        )
+
+    kept: dict[tuple, ReportRow] = {}
+    order: list[tuple] = []
+    for row in rows:
+        key = fingerprint(row)
+        if key not in kept:
+            kept[key] = row
+            order.append(key)
+            continue
+        existing = kept[key]
+        if row.is_new and not existing.is_new:
+            existing.is_new = True
+        if existing.previous_price is None and row.previous_price is not None:
+            existing.previous_price = row.previous_price
+    return [kept[key] for key in order]
+
+
 def _fmt_price(price: Optional[float]) -> str:
     return f"${price:,.0f}" if price is not None else "N/A"
 

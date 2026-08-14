@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from carfinder.config import SearchConfig
 from carfinder.db import ListingStore
 from carfinder.models import Listing
-from carfinder.report import ReportRow, write_report
+from carfinder.report import ReportRow, dedupe_rows, write_report
 from carfinder.scrapers import SCRAPER_REGISTRY
 from carfinder.valuation import evaluate_listing
 from carfinder.vin import decode_vin
@@ -109,6 +109,7 @@ def run_pipeline(
             )
         )
 
+    rows = dedupe_rows(rows)
     report_path = write_report(rows, config.make, config.model, output_dir=report_dir)
     notify(f"Report written to {report_path}")
     return rows, report_path
