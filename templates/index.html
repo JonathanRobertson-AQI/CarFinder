@@ -30,7 +30,7 @@
         <div class="card shadow-sm">
           <div class="card-body">
             <h5 class="card-title">Search Settings</h5>
-            <form method="post" action="{{ url_for('update_config') }}">
+            <form method="post" action="{{ url_for('update_config') }}" id="settings-form">
               <div class="row g-2">
                 <div class="col-6">
                   <label class="form-label">Make</label>
@@ -110,7 +110,10 @@
           <div class="card-body">
             <h5 class="card-title">Run Search</h5>
             <button class="btn btn-success" id="run-btn" type="button">Run Search Now</button>
-            <div class="form-text">Scrapes selected sources, saves results, and refreshes the table.</div>
+            <div class="form-text">
+              Scrapes selected sources using the settings above and refreshes the table when done.
+              You can open this page in another tab with different settings to run searches in parallel.
+            </div>
             <div id="job-status" class="mt-2 small"></div>
             <pre id="job-log" class="d-none mt-2"></pre>
           </div>
@@ -127,6 +130,7 @@
               <table class="table table-sm table-hover align-middle">
                 <thead>
                   <tr>
+                    <th>Vehicle</th>
                     <th>Year</th>
                     <th>Price</th>
                     <th>Mileage</th>
@@ -137,6 +141,7 @@
                 <tbody>
                   {% for row in rows %}
                   <tr>
+                    <td>{{ row.make }} {{ row.model }}</td>
                     <td>{{ row.year or 'N/A' }}</td>
                     <td>
                       {% if row.valuation.is_good_deal %}<span class="badge badge-deal">Deal</span>{% endif %}
@@ -163,12 +168,17 @@
   </div>
 
   <script>
-    function pollStatus(onDone) {
+    function pollStatus(jobId, onDone) {
       const logEl = document.getElementById('job-log');
       const statusEl = document.getElementById('job-status');
       logEl.classList.remove('d-none');
       const interval = setInterval(() => {
-        fetch('/status').then(r => r.json()).then(data => {
+        fetch('/status?job_id=' + encodeURIComponent(jobId)).then(r => r.json()).then(data => {
+          if (data.error && data.log === undefined) {
+            clearInterval(interval);
+            statusEl.textContent = 'Error: ' + data.error;
+            return;
+          }
           logEl.textContent = data.log.join('\n');
           logEl.scrollTop = logEl.scrollHeight;
           if (!data.running) {
@@ -186,15 +196,19 @@
       fetch('/login-facebook', { method: 'POST' }).then(r => r.json()).then(data => {
         if (!data.ok) { alert(data.error); return; }
         document.getElementById('job-status').textContent = 'Opening browser window — please log in there...';
-        pollStatus(() => location.reload());
+        pollStatus(data.job_id, () => location.reload());
       });
     });
 
     document.getElementById('run-btn').addEventListener('click', () => {
-      fetch('/run', { method: 'POST' }).then(r => r.json()).then(data => {
+      // Send this tab's current settings-form values, so a search started
+      // here runs independently of (and in parallel with) any search
+      // started from another tab with different settings.
+      const formData = new FormData(document.getElementById('settings-form'));
+      fetch('/run', { method: 'POST', body: formData }).then(r => r.json()).then(data => {
         if (!data.ok) { alert(data.error); return; }
         document.getElementById('job-status').textContent = 'Starting search...';
-        pollStatus(() => location.reload());
+        pollStatus(data.job_id, () => location.reload());
       });
     });
   </script>

@@ -70,6 +70,15 @@ This opens `http://127.0.0.1:5000` in your browser automatically. From there:
 Re-run the search any time by clicking the button again — it's meant for
 manual, on-demand use.
 
+**Running multiple searches at once:** open `http://127.0.0.1:5000` in
+another browser tab or window, change the Search Settings there (e.g. a
+different make/model, location, or price range), and click **Run Search
+Now** — each tab starts its own independent background job, so several
+searches can run in parallel. All results land in the same shared results
+table/database, tagged with their vehicle in the **Vehicle** column. The
+one exception is **Facebook Login**, which only runs one at a time since
+it's a one-off manual step, not a parallel search.
+
 ## Command-line usage (alternative / advanced)
 
 ```bash

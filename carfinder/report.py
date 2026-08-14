@@ -26,6 +26,8 @@ class ReportRow:
     is_new: bool
     previous_price: Optional[float]
     valuation: ValuationResult
+    make: Optional[str] = None
+    model: Optional[str] = None
 
 
 def dedupe_rows(rows: list[ReportRow]) -> list[ReportRow]:
@@ -44,6 +46,8 @@ def dedupe_rows(rows: list[ReportRow]) -> list[ReportRow]:
             row.year,
             row.mileage,
             (row.location or "").strip().lower(),
+            (row.make or "").strip().lower(),
+            (row.model or "").strip().lower(),
         )
 
     kept: dict[tuple, ReportRow] = {}
