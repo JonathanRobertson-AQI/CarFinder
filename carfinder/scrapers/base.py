@@ -12,6 +12,7 @@ import logging
 import re
 import time
 from abc import ABC, abstractmethod
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -26,6 +27,77 @@ DEFAULT_REQUEST_DELAY_SECONDS = 3.0
 _PRICE_RE = re.compile(r"[\$]?\s*([\d,]+(?:\.\d{2})?)")
 _MILEAGE_RE = re.compile(r"([\d,]+(?:\.\d+)?)\s*(k)?\s*(?:mi\b|miles)", re.IGNORECASE)
 _YEAR_RE = re.compile(r"\b(19[5-9]\d|20[0-4]\d)\b")
+
+# Approximate day-equivalents used to turn a relative "posted" phrase into a
+# concrete date. Only precise to the day, which is all a "date listed"
+# report column needs.
+_RELATIVE_UNIT_TO_DAYS = {
+    "minute": 0, "min": 0, "m": 0,
+    "hour": 0, "hr": 0, "h": 0,
+    "day": 1, "d": 1,
+    "week": 7, "w": 7,
+    "month": 30, "mo": 30,
+    "year": 365, "yr": 365, "y": 365,
+}
+# Spelled-out relative phrasing, e.g. Facebook's "a day ago", "2 weeks ago".
+_RELATIVE_WORDS_RE = re.compile(
+    r"^(a|an|\d+)\s*(minute|hour|day|week|month|year)s?\s*ago$", re.IGNORECASE
+)
+# Abbreviated relative phrasing, e.g. Craigslist's "4h ago", "2d ago".
+_RELATIVE_ABBR_RE = re.compile(
+    r"^(\d+)\s*(min|hr|mo|[mhdwy])\s*ago$", re.IGNORECASE
+)
+# A bare month/day (optionally /year) with no "ago" wording, e.g. Craigslist's
+# short-form dates for postings old enough to have scrolled off relative time
+# (e.g. "8/14", "8/14/24").
+_SHORT_DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?$")
+
+
+def parse_posted_date(text: Optional[str]) -> Optional[str]:
+    """Parse a source's compact "posted"/"listed" date text into an ISO
+    ``YYYY-MM-DD`` string, or ``None`` if the text doesn't match a known
+    format. Handles the formats observed across sources: spelled-out
+    relative time ("a day ago", "2 weeks ago"), abbreviated relative time
+    ("4h ago", "2d ago"), and bare short dates ("8/14", "8/14/24")."""
+    if not text:
+        return None
+    candidate = text.strip().lower()
+
+    match = _RELATIVE_WORDS_RE.match(candidate)
+    if match:
+        amount = 1 if match.group(1) in ("a", "an") else int(match.group(1))
+        return _relative_to_iso(amount, match.group(2))
+
+    match = _RELATIVE_ABBR_RE.match(candidate)
+    if match:
+        return _relative_to_iso(int(match.group(1)), match.group(2))
+
+    match = _SHORT_DATE_RE.match(candidate)
+    if match:
+        month, day = int(match.group(1)), int(match.group(2))
+        year_text = match.group(3)
+        today = date.today()
+        year = today.year
+        if year_text:
+            year = int(year_text)
+            if year < 100:
+                year += 2000
+        try:
+            candidate_date = date(year, month, day)
+        except ValueError:
+            return None
+        # A bare "M/D" with no year is always the most recent such date not
+        # in the future (Craigslist never shows upcoming dates as "posted").
+        if not year_text and candidate_date > today:
+            candidate_date = date(year - 1, month, day)
+        return candidate_date.isoformat()
+
+    return None
+
+
+def _relative_to_iso(amount: int, unit: str) -> str:
+    days = amount * _RELATIVE_UNIT_TO_DAYS.get(unit.lower(), 0)
+    return (date.today() - timedelta(days=days)).isoformat()
 
 
 def parse_price(text: Optional[str]) -> Optional[float]:
@@ -104,6 +176,12 @@ class BaseScraper(ABC):
         if self.on_progress:
             self.on_progress(message)
 
+    def prepare(self, page) -> None:
+        """Optional hook run once, right after the page/context is created
+        but before :meth:`search_url` / navigation. Default no-op. Override
+        for sources that need to establish state (e.g. a location) via the
+        browser before a search URL can be correctly built."""
+
     @abstractmethod
     def search_url(self) -> str:
         """Build the search URL for this source from ``self.config``."""
@@ -148,6 +226,7 @@ class BaseScraper(ABC):
                         )
                     context = browser.new_context(**context_kwargs)
                     page = context.new_page()
+                    self.prepare(page)
                     url = self.search_url()
                     logger.info("[%s] navigating to %s", self.source_name, url)
                     page.goto(url, wait_until="domcontentloaded", timeout=30000)

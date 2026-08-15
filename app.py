@@ -187,6 +187,7 @@ def _get_latest_rows() -> list[ReportRow]:
                 valuation=valuation,
                 make=record["make"],
                 model=record["model"],
+                posted_at=record["posted_at"],
             )
         )
     return rank_rows(dedupe_rows(rows))

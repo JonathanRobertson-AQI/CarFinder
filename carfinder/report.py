@@ -28,6 +28,7 @@ class ReportRow:
     valuation: ValuationResult
     make: Optional[str] = None
     model: Optional[str] = None
+    posted_at: Optional[str] = None
 
 
 def dedupe_rows(rows: list[ReportRow]) -> list[ReportRow]:
@@ -63,6 +64,8 @@ def dedupe_rows(rows: list[ReportRow]) -> list[ReportRow]:
             existing.is_new = True
         if existing.previous_price is None and row.previous_price is not None:
             existing.previous_price = row.previous_price
+        if existing.posted_at is None and row.posted_at is not None:
+            existing.posted_at = row.posted_at
     return [kept[key] for key in order]
 
 
@@ -146,9 +149,9 @@ def render_markdown_report(
             lines.append("")
             return
         lines.append(
-            "| Year | Price | Mileage | Source | Deal Note | Link |"
+            "| Year | Price | Mileage | Date Listed | Source | Deal Note | Link |"
         )
-        lines.append("|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|")
         for r in section_rows:
             price_cell = _fmt_price(r.price)
             if r.previous_price is not None and r.price is not None and r.price != r.previous_price:
@@ -157,7 +160,7 @@ def render_markdown_report(
             flag += "💰 " if r.valuation.is_good_deal else ""
             lines.append(
                 f"| {r.year or 'N/A'} | {flag}{price_cell} | {_fmt_mileage(r.mileage)} "
-                f"| {r.source} | {r.valuation.note} | [{r.title}]({r.url}) |"
+                f"| {r.posted_at or 'N/A'} | {r.source} | {r.valuation.note} | [{r.title}]({r.url}) |"
             )
         lines.append("")
 

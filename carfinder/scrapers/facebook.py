@@ -14,12 +14,15 @@ where possible) and this scraper should be expected to need maintenance.
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 from urllib.parse import quote_plus
 
 from carfinder.models import Listing
-from carfinder.scrapers.base import BaseScraper, parse_price, parse_year
+from carfinder.scrapers.base import BaseScraper, parse_posted_date, parse_price, parse_year
+
+logger = logging.getLogger("carfinder.scrapers")
 
 # A marketplace card's text is a set of newline-separated lines with no
 # reliable fixed position for title/price/location, e.g.:
@@ -58,14 +61,82 @@ MILEAGE_PATTERNS = [
 ]
 DETAIL_PAGE_DELAY_SECONDS = 1.5
 
+# A listing's detail page shows a "Listed <relative time> ago in <location>"
+# line (e.g. "Listed a day ago in Loveland, CO", "Listed 2 weeks ago in
+# Denver, CO"). Search-results cards don't include this at all, so -- like
+# mileage -- it's only available from the detail page.
+_LISTED_AGO_RE = re.compile(r"Listed\s+(.+?\s+ago)\b", re.IGNORECASE)
+
+# Facebook's plain /marketplace/search/?query=... endpoint ignores the
+# logged-in account's actual location entirely and falls back to some
+# unrelated fixed region (observed: consistently the San Francisco Bay Area,
+# regardless of the account's real location or the machine's originating
+# IP). The location-aware search instead lives at
+# /marketplace/<location_id>/search/?query=..., where <location_id> is an
+# internal Facebook id tied to the account's Marketplace location setting --
+# not a zip code or lat/long we can compute ourselves. It's discoverable by
+# visiting the plain Marketplace home feed (which *does* reflect the
+# account's real location) and reading it off one of the feed's own
+# same-location links, e.g. a category shortcut such as:
+#   /marketplace/103797106325848/search/?category_id=...&query=Vehicles
+_LOCATION_ID_RE = re.compile(r"/marketplace/(\d{6,})/search/\?category_id=")
+
 
 class FacebookMarketplaceScraper(BaseScraper):
     source_name = "facebook"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._location_id: str | None = None
+
+    def prepare(self, page) -> None:
+        """Discover the account's Marketplace location id (see note above)
+        before a search URL is built. Best-effort: if this fails for any
+        reason, search_url() falls back to the plain (location-agnostic)
+        endpoint rather than raising."""
+        try:
+            page.goto(
+                "https://www.facebook.com/marketplace/",
+                wait_until="domcontentloaded",
+                timeout=20000,
+            )
+            page.wait_for_timeout(2000)
+            hrefs = page.eval_on_selector_all(
+                "a[href]", "els => els.map(e => e.getAttribute('href'))"
+            )
+            for href in hrefs:
+                if not href:
+                    continue
+                match = _LOCATION_ID_RE.search(href)
+                if match:
+                    self._location_id = match.group(1)
+                    break
+            if self._location_id:
+                self._notify(f"using local marketplace location (id {self._location_id})")
+            else:
+                logger.warning(
+                    "[%s] could not determine Marketplace location id; "
+                    "results may not be limited to the configured area",
+                    self.source_name,
+                )
+        except Exception:
+            logger.warning(
+                "[%s] failed to determine Marketplace location id; "
+                "results may not be limited to the configured area",
+                self.source_name,
+                exc_info=True,
+            )
+
     def search_url(self) -> str:
         query = quote_plus(f"{self.config.make} {self.config.model}")
-        # "propertyoftype=cars" search within Marketplace's vehicles category.
-        base = f"https://www.facebook.com/marketplace/search/?query={query}"
+        if self._location_id:
+            base = f"https://www.facebook.com/marketplace/{self._location_id}/search/?query={query}"
+            if self.config.radius_miles:
+                base += f"&radius={int(self.config.radius_miles)}"
+        else:
+            # Fallback only -- see _LOCATION_ID_RE note. Facebook ignores
+            # location on this endpoint, so results may be from anywhere.
+            base = f"https://www.facebook.com/marketplace/search/?query={query}"
         if self.config.price_max:
             base += f"&maxPrice={int(self.config.price_max)}"
         if self.config.price_min:
@@ -121,33 +192,42 @@ class FacebookMarketplaceScraper(BaseScraper):
                 )
             )
 
-        # Mileage isn't shown on the search-results cards at all, so visit
-        # each listing's own detail page for it. This adds real time (one
+        # Mileage and the posted date aren't shown on the search-results
+        # cards at all, so visit each listing's own detail page for them
+        # (both come from the same page load). This adds real time (one
         # extra page load per listing), so report progress periodically --
         # otherwise a 15+ listing search can look stuck for a minute or two
         # between the "found N listings" and final report lines.
         if listings:
             self._notify(f"fetching mileage details for {len(listings)} listing(s)...")
         for index, listing in enumerate(listings, start=1):
-            listing.mileage = self._fetch_mileage(page, listing.url)
+            listing.mileage, listing.posted_at = self._fetch_detail_info(page, listing.url)
             if index % 5 == 0 and index != len(listings):
                 self._notify(f"fetched mileage for {index}/{len(listings)} listing(s)...")
 
         return listings
 
-    def _fetch_mileage(self, page, url: str) -> int | None:
+    def _fetch_detail_info(self, page, url: str) -> tuple[int | None, str | None]:
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=20000)
             time.sleep(DETAIL_PAGE_DELAY_SECONDS)
             body_text = page.locator("body").inner_text()
         except Exception:
-            return None
+            return None, None
 
+        mileage = None
         for pattern, multiplier in MILEAGE_PATTERNS:
             match = pattern.search(body_text)
             if match:
                 try:
-                    return int(float(match.group(1).replace(",", "")) * multiplier)
+                    mileage = int(float(match.group(1).replace(",", "")) * multiplier)
+                    break
                 except ValueError:
                     continue
-        return None
+
+        posted_at = None
+        listed_match = _LISTED_AGO_RE.search(body_text)
+        if listed_match:
+            posted_at = parse_posted_date(listed_match.group(1))
+
+        return mileage, posted_at

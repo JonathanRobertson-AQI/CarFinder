@@ -9,7 +9,13 @@ from __future__ import annotations
 from urllib.parse import quote_plus
 
 from carfinder.models import Listing
-from carfinder.scrapers.base import BaseScraper, parse_mileage, parse_price, parse_year
+from carfinder.scrapers.base import (
+    BaseScraper,
+    parse_mileage,
+    parse_posted_date,
+    parse_price,
+    parse_year,
+)
 
 # Craigslist is organized by city subdomain. Users outside these regions
 # should override `region_subdomain` (e.g. via a config field) or add more
@@ -66,6 +72,13 @@ class CraigslistScraper(BaseScraper):
             except Exception:
                 pass
 
+            posted_at = None
+            try:
+                posted_text = row.locator("span.result-posted-date").first.inner_text()
+                posted_at = parse_posted_date(posted_text)
+            except Exception:
+                pass
+
             listings.append(
                 Listing(
                     source=self.source_name,
@@ -77,6 +90,7 @@ class CraigslistScraper(BaseScraper):
                     model=self.config.model,
                     mileage=parse_mileage(meta_text),
                     location=self.region_subdomain,
+                    posted_at=posted_at,
                 )
             )
 

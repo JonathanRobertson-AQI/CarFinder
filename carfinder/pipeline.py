@@ -140,6 +140,7 @@ def run_pipeline(
                 is_new=is_new,
                 previous_price=previous_price,
                 valuation=valuation,
+                posted_at=record["posted_at"],
             )
         )
 

@@ -143,6 +143,7 @@
                     <th>Year</th>
                     <th>Price</th>
                     <th>Mileage</th>
+                    <th>Date Listed</th>
                     <th>Source</th>
                     <th>Notes</th>
                   </tr>
@@ -157,6 +158,7 @@
                       {{ '${:,.0f}'.format(row.price) if row.price is not none else 'N/A' }}
                     </td>
                     <td>{{ '{:,} mi'.format(row.mileage) if row.mileage is not none else 'N/A' }}</td>
+                    <td>{{ row.posted_at or 'N/A' }}</td>
                     <td>{{ row.source }}</td>
                     <td>
                       <div class="small text-muted">{{ row.valuation.note }}</div>
