@@ -12,6 +12,12 @@
     body { padding: 2rem; background: #f8f9fa; }
     .badge-new { background-color: #0d6efd; }
     .badge-deal { background-color: #198754; }
+    .sort-button {
+      background: none; border: 0; color: inherit; font: inherit; font-weight: 600;
+      padding: 0; white-space: nowrap;
+    }
+    .sort-button:hover, .sort-button:focus { color: #0d6efd; text-decoration: underline; }
+    .sort-indicator { display: inline-block; min-width: 0.8em; }
     #job-log {
       max-height: 200px; overflow-y: auto; font-family: monospace;
       font-size: 0.85rem; background: #212529; color: #d4d4d4; padding: 0.75rem;
@@ -133,34 +139,35 @@
             <h5 class="card-title">Active Listings ({{ rows|length }})</h5>
             {% if rows %}
             <p class="text-muted small mb-2">
-              Sorted with the best combination of low mileage and good comparable-price deals near the top.
+              Initially ranked by low mileage and good comparable-price deals. Click a column heading to sort;
+              click it again to reverse the order.
             </p>
             <div class="table-responsive">
-              <table class="table table-sm table-hover align-middle">
-                <thead>
-                  <tr>
-                    <th>Vehicle</th>
-                    <th>Year</th>
-                    <th>Price</th>
-                    <th>Mileage</th>
-                    <th>Date Listed</th>
-                    <th>Source</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in rows %}
-                  <tr>
-                    <td>{{ row.make }} {{ row.model }}</td>
-                    <td>{{ row.year or 'N/A' }}</td>
-                    <td>
-                      {% if row.valuation.is_good_deal %}<span class="badge badge-deal">Deal</span>{% endif %}
-                      {{ '${:,.0f}'.format(row.price) if row.price is not none else 'N/A' }}
-                    </td>
-                    <td>{{ '{:,} mi'.format(row.mileage) if row.mileage is not none else 'N/A' }}</td>
-                    <td>{{ row.posted_at or 'N/A' }}</td>
-                    <td>{{ row.source }}</td>
-                    <td>
+            <table class="table table-sm table-hover align-middle" id="results-table">
+              <thead>
+                <tr>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort-column="0" data-sort-type="text">Vehicle <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort-column="1" data-sort-type="number">Year <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort-column="2" data-sort-type="number">Price <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort-column="3" data-sort-type="number">Mileage <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort-column="4" data-sort-type="date">Date Listed <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort-column="5" data-sort-type="text">Source <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort-column="6" data-sort-type="text">Notes <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rows %}
+                <tr>
+                  <td data-sort-value="{{ row.make }} {{ row.model }}">{{ row.make }} {{ row.model }}</td>
+                  <td data-sort-value="{{ row.year if row.year is not none else '' }}">{{ row.year or 'N/A' }}</td>
+                  <td data-sort-value="{{ row.price if row.price is not none else '' }}">
+                    {% if row.valuation.is_good_deal %}<span class="badge badge-deal">Deal</span>{% endif %}
+                    {{ '${:,.0f}'.format(row.price) if row.price is not none else 'N/A' }}
+                  </td>
+                  <td data-sort-value="{{ row.mileage if row.mileage is not none else '' }}">{{ '{:,} mi'.format(row.mileage) if row.mileage is not none else 'N/A' }}</td>
+                  <td data-sort-value="{{ row.posted_at or '' }}">{{ row.posted_at or 'N/A' }}</td>
+                  <td data-sort-value="{{ row.source }}">{{ row.source }}</td>
+                  <td data-sort-value="{{ row.title }} {{ row.valuation.note }}">
                       <div class="small text-muted">{{ row.valuation.note }}</div>
                       <a href="{{ row.url }}" target="_blank" rel="noopener">{{ row.title }}</a>
                     </td>
@@ -220,6 +227,47 @@
         if (!data.ok) { alert(data.error); return; }
         document.getElementById('job-status').textContent = 'Starting search...';
         pollStatus(data.job_id, () => location.reload());
+      });
+    });
+
+    document.querySelectorAll('#results-table .sort-button').forEach(button => {
+      button.addEventListener('click', () => {
+        const table = document.getElementById('results-table');
+        const body = table.tBodies[0];
+        const column = Number(button.dataset.sortColumn);
+        const type = button.dataset.sortType;
+        const direction = button.dataset.sortDirection === 'asc' ? 'desc' : 'asc';
+        const rows = Array.from(body.rows).map((row, index) => ({ row, index }));
+
+        rows.sort((left, right) => {
+          const leftValue = left.row.cells[column].dataset.sortValue;
+          const rightValue = right.row.cells[column].dataset.sortValue;
+          // Missing values remain at the bottom regardless of direction.
+          if (!leftValue || !rightValue) {
+            if (!leftValue && !rightValue) return left.index - right.index;
+            return leftValue ? -1 : 1;
+          }
+
+          let comparison;
+          if (type === 'number') {
+            comparison = Number(leftValue) - Number(rightValue);
+          } else if (type === 'date') {
+            comparison = new Date(leftValue) - new Date(rightValue);
+          } else {
+            comparison = leftValue.localeCompare(rightValue, undefined, { sensitivity: 'base' });
+          }
+          return comparison === 0 ? left.index - right.index : comparison * (direction === 'asc' ? 1 : -1);
+        });
+
+        rows.forEach(({ row }) => body.appendChild(row));
+        document.querySelectorAll('#results-table .sort-button').forEach(other => {
+          const active = other === button;
+          other.dataset.sortDirection = active ? direction : '';
+          other.closest('th').setAttribute(
+            'aria-sort', active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'
+          );
+          other.querySelector('.sort-indicator').textContent = active ? (direction === 'asc' ? '▲' : '▼') : '';
+        });
       });
     });
   </script>
