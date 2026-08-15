@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from carfinder.report import ReportRow, dedupe_rows, render_markdown_report
+from carfinder.report import ReportRow, dedupe_rows, rank_rows, render_markdown_report
 from carfinder.valuation import ValuationResult
 
 
@@ -82,3 +82,59 @@ def test_dedupe_rows_merges_is_new_and_previous_price():
     assert len(deduped) == 1
     assert deduped[0].is_new is True
     assert deduped[0].previous_price == 14000
+
+
+def test_rank_rows_puts_best_deal_and_lowest_mileage_first():
+    good_deal_low_mileage = make_row(
+        url="https://example.com/1",
+        mileage=50000,
+        valuation=ValuationResult(
+            sample_size=6, median_price=17500, percentile_rank=5.0,
+            is_good_deal=True, note="great deal",
+        ),
+    )
+    bad_deal_high_mileage = make_row(
+        url="https://example.com/2",
+        mileage=180000,
+        valuation=ValuationResult(
+            sample_size=6, median_price=17500, percentile_rank=95.0,
+            is_good_deal=False, note="overpriced",
+        ),
+    )
+    ranked = rank_rows([bad_deal_high_mileage, good_deal_low_mileage])
+    assert ranked[0].url == "https://example.com/1"
+    assert ranked[1].url == "https://example.com/2"
+
+
+def test_rank_rows_treats_missing_signals_as_neutral():
+    # No mileage and no comparable-price sample -- should still be orderable
+    # relative to a row with both signals, rather than crashing or always
+    # sinking to the bottom.
+    unknown = make_row(
+        url="https://example.com/1",
+        mileage=None,
+        valuation=ValuationResult(
+            sample_size=1, median_price=None, percentile_rank=None,
+            is_good_deal=False, note="not enough data",
+        ),
+    )
+    clear_bad_deal = make_row(
+        url="https://example.com/2",
+        mileage=200000,
+        valuation=ValuationResult(
+            sample_size=6, median_price=17500, percentile_rank=99.0,
+            is_good_deal=False, note="overpriced",
+        ),
+    )
+    ranked = rank_rows([clear_bad_deal, unknown])
+    # The unknown-signal row uses a neutral score, so it should rank ahead
+    # of the row that's clearly a bad deal with high mileage.
+    assert ranked[0].url == "https://example.com/1"
+    assert ranked[1].url == "https://example.com/2"
+
+
+def test_rank_rows_is_stable_for_ties():
+    a = make_row(url="https://example.com/1")
+    b = make_row(url="https://example.com/2")
+    ranked = rank_rows([a, b])
+    assert [r.url for r in ranked] == ["https://example.com/1", "https://example.com/2"]

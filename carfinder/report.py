@@ -66,6 +66,43 @@ def dedupe_rows(rows: list[ReportRow]) -> list[ReportRow]:
     return [kept[key] for key in order]
 
 
+def _percentile_of(value: float, population: list[float]) -> float:
+    """Percentage of ``population`` at or below ``value`` (0-100)."""
+    if not population:
+        return 50.0
+    return 100.0 * sum(1 for p in population if p <= value) / len(population)
+
+
+def rank_rows(rows: list[ReportRow]) -> list[ReportRow]:
+    """Sort rows so lower-mileage vehicles and better deals rank near the top.
+
+    Combines two normalized 0-100 scores into one ascending composite (best
+    first): the listing's valuation percentile (lower = priced cheaper than
+    comparable listings) and its mileage percentile among the current result
+    set (lower = fewer miles than other listings shown). Rows missing one of
+    the two signals -- mileage wasn't scraped, or there weren't enough
+    comparables to value the listing confidently -- use a neutral score of
+    50 for that half, so they're neither unfairly punished nor rewarded and
+    still order sensibly by whichever signal is available.
+    """
+    known_mileages = [r.mileage for r in rows if r.mileage is not None]
+
+    def score(row: ReportRow) -> float:
+        deal_score = (
+            row.valuation.percentile_rank
+            if row.valuation.percentile_rank is not None
+            else 50.0
+        )
+        mileage_score = (
+            _percentile_of(row.mileage, known_mileages)
+            if row.mileage is not None
+            else 50.0
+        )
+        return (deal_score + mileage_score) / 2
+
+    return sorted(rows, key=score)
+
+
 def _fmt_price(price: Optional[float]) -> str:
     return f"${price:,.0f}" if price is not None else "N/A"
 
