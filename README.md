@@ -7,9 +7,9 @@ price, location, radius, max mileage) are fully configurable via
 
 ## What it does
 
-- Scrapes listings from **Facebook Marketplace**, **Craigslist**, and
-  **Cars.com** using [Playwright](https://playwright.dev/python/) browser
-  automation.
+- Scrapes listings from **Facebook Marketplace**, **Craigslist**, **Cars.com**,
+  **AutoTrader**, **CarGurus**, and **TrueCar** using
+  [Playwright](https://playwright.dev/python/) browser automation.
 - Persists listings in a local SQLite database (`carfinder.db`) so repeated
   runs can detect **new listings** and **price drops** since the last run.
 - Decodes VINs (when a listing includes one) via the free, official
@@ -25,7 +25,7 @@ price, location, radius, max mileage) are fully configurable via
 ## Important limitations (read before use)
 
 - **No official listings APIs exist** for Facebook Marketplace, Craigslist,
-  or Cars.com/AutoTrader/CarGurus. This tool works by automating a real
+  Cars.com, AutoTrader, CarGurus, or TrueCar. This tool works by automating a real
   browser against the live sites. That means:
   - Selectors **will** break when these sites change their markup — this is
     expected maintenance, not a bug.
@@ -119,6 +119,10 @@ carfinder/
     facebook.py
     craigslist.py
     cars_com.py  # Uses Cars.com's embedded structured vehicle-data JSON
+    aggregator.py  # Shared JSON-LD/card parsing for dealer aggregators
+    autotrader.py
+    cargurus.py
+    truecar.py
 app.py           # Web UI (Flask) -- recommended way to run this tool
 main.py          # CLI entrypoint (same pipeline, no browser UI)
 facebook_login.py  # Standalone CLI alternative to the web UI's login button
@@ -134,13 +138,12 @@ pytest
 
 Tests cover the database layer, valuation logic, VIN decoding (mocked HTTP),
 and report rendering — not live scraping, since that depends on the current
-state of third-party sites. All three scrapers (Craigslist, Cars.com, and
-Facebook Marketplace) have been manually verified against the live sites as
-of this writing, including a logged-out Facebook Marketplace session.
+state of third-party sites.
 
 ## Roadmap (not yet implemented)
 
-- AutoTrader / CarGurus scrapers (same aggregator-site family as Cars.com).
+- Improve source-specific selectors as AutoTrader, CarGurus, and TrueCar markup
+  changes or bot protection varies by network.
 - Verifying the Facebook Marketplace scraper against a real, logged-in
   session (the login flow is implemented and the scraper works logged-out,
   but a logged-in run hasn't been exercised end-to-end).

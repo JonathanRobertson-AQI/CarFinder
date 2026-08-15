@@ -43,7 +43,9 @@ class SearchConfig:
     radius_miles: int = 100
     max_mileage: int | None = 150000
     sources: list[str] = field(
-        default_factory=lambda: ["facebook", "craigslist", "cars_com"]
+        default_factory=lambda: [
+            "facebook", "craigslist", "cars_com", "autotrader", "cargurus", "truecar"
+        ]
     )
     min_sample_size_for_valuation: int = 5
     good_deal_percentile: float = 25.0

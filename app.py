@@ -40,7 +40,7 @@ logger = logging.getLogger("carfinder.app")
 app = Flask(__name__)
 
 CONFIG_PATH = SearchConfig.default_path()
-ALL_SOURCES = ["facebook", "craigslist", "cars_com"]
+ALL_SOURCES = ["facebook", "craigslist", "cars_com", "autotrader", "cargurus", "truecar"]
 
 # In-memory job tracking, keyed by a random job_id so multiple searches can
 # run at once (e.g. from separate browser tabs). Each job carries its own
