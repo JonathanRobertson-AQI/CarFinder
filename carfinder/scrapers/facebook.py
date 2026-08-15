@@ -123,9 +123,15 @@ class FacebookMarketplaceScraper(BaseScraper):
 
         # Mileage isn't shown on the search-results cards at all, so visit
         # each listing's own detail page for it. This adds real time (one
-        # extra page load per listing) but is the only way to get it.
-        for listing in listings:
+        # extra page load per listing), so report progress periodically --
+        # otherwise a 15+ listing search can look stuck for a minute or two
+        # between the "found N listings" and final report lines.
+        if listings:
+            self._notify(f"fetching mileage details for {len(listings)} listing(s)...")
+        for index, listing in enumerate(listings, start=1):
             listing.mileage = self._fetch_mileage(page, listing.url)
+            if index % 5 == 0 and index != len(listings):
+                self._notify(f"fetched mileage for {index}/{len(listings)} listing(s)...")
 
         return listings
 

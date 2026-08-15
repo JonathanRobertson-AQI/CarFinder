@@ -13,7 +13,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from carfinder.config import SearchConfig
 from carfinder.models import Listing
@@ -83,6 +83,7 @@ class BaseScraper(ABC):
         headless: bool = True,
         request_delay_seconds: float = DEFAULT_REQUEST_DELAY_SECONDS,
         storage_state_path: Optional[str] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
     ):
         self.config = config
         self.headless = headless
@@ -92,6 +93,16 @@ class BaseScraper(ABC):
         # in session (e.g. Facebook Marketplace). Ignored if the file
         # doesn't exist.
         self.storage_state_path = storage_state_path
+        # Optional callback for short human-readable progress updates, so a
+        # slow multi-step scrape (e.g. Facebook's per-listing detail page
+        # visits for mileage) can surface interim status to a web UI instead
+        # of looking stuck between the "Searching..." and "found N" lines.
+        self.on_progress = on_progress
+
+    def _notify(self, message: str) -> None:
+        logger.info("[%s] %s", self.source_name, message)
+        if self.on_progress:
+            self.on_progress(message)
 
     @abstractmethod
     def search_url(self) -> str:

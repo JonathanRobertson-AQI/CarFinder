@@ -102,7 +102,11 @@
             <button class="btn btn-outline-primary" id="login-fb-btn" type="button">
               Log into Facebook
             </button>
-            <div class="form-text">Opens a real browser window. Log in there (including any 2FA) — this app never sees your password.</div>
+            <div class="form-text">
+              Opens a real, separate browser window — log in there (including any 2FA); this app
+              never sees your password. <strong>Look for a new window on your taskbar</strong> if
+              it doesn't pop up in front right away; it can open behind other windows.
+            </div>
           </div>
         </div>
 
@@ -112,7 +116,9 @@
             <button class="btn btn-success" id="run-btn" type="button">Run Search Now</button>
             <div class="form-text">
               Scrapes selected sources using the settings above and refreshes the table when done.
-              You can open this page in another tab with different settings to run searches in parallel.
+              Facebook results include a per-listing mileage lookup, so a search can take a couple
+              of minutes — the log below will keep updating with progress. You can open this page
+              in another tab with different settings to run searches in parallel.
             </div>
             <div id="job-status" class="mt-2 small"></div>
             <pre id="job-log" class="d-none mt-2"></pre>

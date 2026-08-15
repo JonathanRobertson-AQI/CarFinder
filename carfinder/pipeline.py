@@ -85,7 +85,7 @@ def run_pipeline(
         kwargs = {}
         if source == "facebook" and storage_state_path:
             kwargs["storage_state_path"] = storage_state_path
-        scraper = scraper_cls(config, headless=headless, **kwargs)
+        scraper = scraper_cls(config, headless=headless, on_progress=on_progress, **kwargs)
         listings: list[Listing] = scraper.run()
         notify(f"{source}: found {len(listings)} listing(s)")
 
