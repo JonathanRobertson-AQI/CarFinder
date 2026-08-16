@@ -30,7 +30,7 @@ from flask import Flask, redirect, render_template, request, url_for, jsonify
 from carfinder.config import SearchConfig
 from carfinder.db import ListingStore
 from carfinder.facebook_auth import DEFAULT_STORAGE_STATE_PATH, login_and_save_session
-from carfinder.pipeline import run_pipeline
+from carfinder.pipeline import _values_within_filters, run_pipeline
 from carfinder.valuation import evaluate_listing
 from carfinder.report import ReportRow, dedupe_rows, rank_rows
 
@@ -84,7 +84,10 @@ def _config_from_form(form, defaults: Optional[SearchConfig] = None) -> SearchCo
             return fallback
         return int(value) if value else None
 
-    sources = form.getlist("sources") or defaults.sources
+    # An explicitly rendered-but-unchecked checkbox group means "no sources";
+    # only fall back to defaults when the request came from a caller that did
+    # not render the source controls.
+    sources = form.getlist("sources") if "sources_present" in form else defaults.sources
 
     return SearchConfig(
         make=form.get("make", defaults.make).strip(),
@@ -139,7 +142,7 @@ def _facebook_session_exists() -> bool:
     return Path(DEFAULT_STORAGE_STATE_PATH).exists()
 
 
-def _get_latest_rows() -> list[ReportRow]:
+def _get_latest_rows(config: Optional[SearchConfig] = None) -> list[ReportRow]:
     """Read all currently-active listings + valuations from the shared DB.
 
     Not filtered to a single make/model, since multiple parallel searches
@@ -147,12 +150,21 @@ def _get_latest_rows() -> list[ReportRow]:
     valuation is still computed per listing's own make/model/year range.
     """
     store = ListingStore()
-    active = store.active_listings()
+    config = config or SearchConfig()
+    active = [
+        record for record in store.active_listings()
+        if record["source"] in config.sources
+        and record["make"] == config.make
+        and record["model"] == config.model
+        and _values_within_filters(
+            record["year"], record["price"], record["mileage"], config
+        )
+    ]
     rows: list[ReportRow] = []
     # Cache comparable prices per (make, model, year_min, year_max) combo
     # actually used, computed lazily as needed below.
     comparable_cache: dict[tuple, list[float]] = {}
-    default_config = SearchConfig()
+    default_config = config
     for record in active:
         year = record["year"] or default_config.year_min
         year_min = max(year - 3, 1900)
@@ -196,7 +208,7 @@ def _get_latest_rows() -> list[ReportRow]:
 @app.route("/")
 def index():
     config = _load_config()
-    rows = _get_latest_rows()
+    rows = _get_latest_rows(config)
     return render_template(
         "index.html",
         config=config,

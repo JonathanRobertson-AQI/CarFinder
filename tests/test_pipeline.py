@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from carfinder.config import SearchConfig
 from carfinder.models import Listing
-from carfinder.pipeline import _within_filters, run_pipeline
+from carfinder.pipeline import _values_within_filters, _within_filters, run_pipeline
 
 
 def make_listing(**kwargs) -> Listing:
@@ -56,6 +56,13 @@ def test_within_filters_rejects_price_and_mileage_out_of_range():
     assert not _within_filters(make_listing(price=5000), config)
     assert not _within_filters(make_listing(price=25000), config)
     assert not _within_filters(make_listing(mileage=150000), config)
+
+
+def test_values_within_filters_rejects_years_outside_selected_range():
+    config = SearchConfig(year_min=2011, year_max=2015)
+    assert not _values_within_filters(2008, 10000, 90000, config)
+    assert not _values_within_filters(2018, 10000, 90000, config)
+    assert _values_within_filters(2013, 10000, 90000, config)
 
 
 def test_run_pipeline_filters_out_of_range_listings_before_persisting(tmp_path):

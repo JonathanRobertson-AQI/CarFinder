@@ -21,7 +21,12 @@ logger = logging.getLogger("carfinder.pipeline")
 ProgressCallback = Callable[[str], None]
 
 
-def _within_filters(listing: Listing, config: SearchConfig) -> bool:
+def _values_within_filters(
+    year: int | None,
+    price: float | None,
+    mileage: int | None,
+    config: SearchConfig,
+) -> bool:
     """Check a scraped listing against year/price/mileage filters.
 
     Not every source's search URL reliably honors these filters server-side
@@ -31,20 +36,24 @@ def _within_filters(listing: Listing, config: SearchConfig) -> bool:
     older/newer or out-of-budget listings just because the site returned
     them anyway.
     """
-    if listing.year is not None:
-        if config.year_min and listing.year < config.year_min:
+    if year is not None:
+        if config.year_min and year < config.year_min:
             return False
-        if config.year_max and listing.year > config.year_max:
+        if config.year_max and year > config.year_max:
             return False
-    if listing.price is not None:
-        if config.price_min and listing.price < config.price_min:
+    if price is not None:
+        if config.price_min and price < config.price_min:
             return False
-        if config.price_max and listing.price > config.price_max:
+        if config.price_max and price > config.price_max:
             return False
-    if listing.mileage is not None and config.max_mileage:
-        if listing.mileage > config.max_mileage:
+    if mileage is not None and config.max_mileage:
+        if mileage > config.max_mileage:
             return False
     return True
+
+
+def _within_filters(listing: Listing, config: SearchConfig) -> bool:
+    return _values_within_filters(listing.year, listing.price, listing.mileage, config)
 
 
 def run_pipeline(
@@ -110,7 +119,13 @@ def run_pipeline(
         store.mark_inactive_except((l.listing_id for l in listings), source)
 
     notify("Scoring listings against comparable prices...")
-    active = store.active_listings(make=config.make, model=config.model)
+    active = [
+        record for record in store.active_listings(make=config.make, model=config.model)
+        if record["source"] in config.sources
+        and _values_within_filters(
+            record["year"], record["price"], record["mileage"], config
+        )
+    ]
     comparable_prices = store.comparable_prices(
         config.make, config.model, config.year_min, config.year_max
     )

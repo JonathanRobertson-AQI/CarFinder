@@ -8,6 +8,7 @@ import time
 from unittest.mock import patch
 
 import app as app_module
+from werkzeug.datastructures import MultiDict
 
 
 def _stub_pipeline_factory(delay: float):
@@ -80,3 +81,17 @@ def test_status_unknown_job_id_returns_404():
     client = app_module.app.test_client()
     resp = client.get("/status?job_id=does-not-exist")
     assert resp.status_code == 404
+
+
+def test_config_form_can_explicitly_disable_all_sources():
+    config = app_module._config_from_form(
+        MultiDict([
+            ("make", "Honda"),
+            ("model", "Pilot"),
+            ("year_min", "2011"),
+            ("year_max", "2015"),
+            ("sources_present", "1"),
+        ]),
+        defaults=app_module.SearchConfig(sources=["facebook"]),
+    )
+    assert config.sources == []
