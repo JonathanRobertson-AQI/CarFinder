@@ -157,10 +157,10 @@ class ListingStore:
             query = "SELECT * FROM listings WHERE active = 1"
             params: list[str] = []
             if make:
-                query += " AND make = ?"
+                query += " AND LOWER(make) = LOWER(?)"
                 params.append(make)
             if model:
-                query += " AND model = ?"
+                query += " AND LOWER(model) = LOWER(?)"
                 params.append(model)
             query += " ORDER BY price ASC"
             return conn.execute(query, params).fetchall()
@@ -173,7 +173,7 @@ class ListingStore:
             rows = conn.execute(
                 """
                 SELECT price FROM listings
-                WHERE active = 1 AND make = ? AND model = ?
+                WHERE active = 1 AND LOWER(make) = LOWER(?) AND LOWER(model) = LOWER(?)
                   AND year BETWEEN ? AND ?
                   AND price IS NOT NULL
                 """,

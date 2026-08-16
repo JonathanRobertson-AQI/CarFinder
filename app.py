@@ -145,17 +145,17 @@ def _facebook_session_exists() -> bool:
 def _get_latest_rows(config: Optional[SearchConfig] = None) -> list[ReportRow]:
     """Read all currently-active listings + valuations from the shared DB.
 
-    Not filtered to a single make/model, since multiple parallel searches
-    for different vehicles may be tracked at once; comparable-price
-    valuation is still computed per listing's own make/model/year range.
+    The current page's source, make/model, year, price, and mileage settings
+    determine which active records are shown. Listings remain in the database
+    so a later search with different settings can show them again.
     """
     store = ListingStore()
     config = config or SearchConfig()
     active = [
         record for record in store.active_listings()
         if record["source"] in config.sources
-        and record["make"] == config.make
-        and record["model"] == config.model
+        and (record["make"] or "").casefold() == config.make.casefold()
+        and (record["model"] or "").casefold() == config.model.casefold()
         and _values_within_filters(
             record["year"], record["price"], record["mileage"], config
         )

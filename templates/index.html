@@ -187,6 +187,15 @@
   </div>
 
   <script>
+    const savedJobLog = sessionStorage.getItem('carfinder-last-job-log');
+    if (savedJobLog) {
+      const savedLogEl = document.getElementById('job-log');
+      savedLogEl.classList.remove('d-none');
+      savedLogEl.textContent = savedJobLog;
+      savedLogEl.scrollTop = savedLogEl.scrollHeight;
+      document.getElementById('job-status').textContent = 'Last search finished.';
+    }
+
     function pollStatus(jobId, onDone) {
       const logEl = document.getElementById('job-log');
       const statusEl = document.getElementById('job-status');
@@ -199,6 +208,7 @@
             return;
           }
           logEl.textContent = data.log.join('\n');
+          sessionStorage.setItem('carfinder-last-job-log', logEl.textContent);
           logEl.scrollTop = logEl.scrollHeight;
           if (!data.running) {
             clearInterval(interval);
@@ -212,6 +222,7 @@
     }
 
     document.getElementById('login-fb-btn').addEventListener('click', () => {
+      sessionStorage.removeItem('carfinder-last-job-log');
       fetch('/login-facebook', { method: 'POST' }).then(r => r.json()).then(data => {
         if (!data.ok) { alert(data.error); return; }
         document.getElementById('job-status').textContent = 'Opening browser window — please log in there...';
@@ -220,6 +231,7 @@
     });
 
     document.getElementById('run-btn').addEventListener('click', () => {
+      sessionStorage.removeItem('carfinder-last-job-log');
       // Send this tab's current settings-form values, so a search started
       // here runs independently of (and in parallel with) any search
       // started from another tab with different settings.

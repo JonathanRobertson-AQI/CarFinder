@@ -56,6 +56,14 @@ def test_active_listings_filters_by_make_model(store):
     assert results[0]["url"] == "https://example.com/1"
 
 
+def test_active_listings_make_model_filter_is_case_insensitive(store):
+    store.upsert(make_listing(make="Honda", model="Pilot"))
+
+    results = store.active_listings(make="honda", model="pilot")
+
+    assert len(results) == 1
+
+
 def test_mark_inactive_except_deactivates_missing_listings(store):
     l1 = make_listing(url="https://example.com/1")
     l2 = make_listing(url="https://example.com/2")
